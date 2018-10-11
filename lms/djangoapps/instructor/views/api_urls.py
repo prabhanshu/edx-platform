@@ -4,7 +4,7 @@ Instructor API endpoint urls.
 
 from django.conf.urls import url
 
-from lms.djangoapps.instructor.views import api, gradebook_api
+from lms.djangoapps.instructor.views import api, gradebook_api, masters_gradebook_api
 
 urlpatterns = [
     url(r'^students_update_enrollment$', api.students_update_enrollment, name='students_update_enrollment'),
@@ -73,6 +73,7 @@ urlpatterns = [
 
     # spoc gradebook
     url(r'^gradebook$', gradebook_api.spoc_gradebook, name='spoc_gradebook'),
+    url(r'^mastersGradebook$', masters_gradebook_api.spoc_masters_gradebook, name='spoc_masters_gradebook'),
 
     url(r'^gradebook/(?P<offset>[0-9]+)$', gradebook_api.spoc_gradebook, name='spoc_gradebook'),
 

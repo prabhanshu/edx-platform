@@ -99,22 +99,31 @@ def get_grade_book_page(request, course, course_key):
 @transaction.non_atomic_requests
 @cache_control(no_cache=True, no_store=True, must_revalidate=True)
 @require_level('staff')
-def spoc_gradebook(request, course_id):
+def spoc_masters_gradebook(request, course_id):
     """
     Show the gradebook for this course:
     - Only shown for courses with enrollment < settings.FEATURES.get("MAX_ENROLLMENT_INSTR_BUTTONS")
     - Only displayed to course staff
     """
     course_key = CourseKey.from_string(course_id)
-    course = get_course_with_access(request.user, 'staff', course_key, depth=None)
-    student_info, page = get_grade_book_page(request, course, course_key)
+    course = get_course_with_access(request.user, 'load', course_key)
+    enrolled_students = get_enrolled_non_staff_students(course, course_key)
 
-    return render_to_response('courseware/gradebook.html', {
-        'page': page,
-        'page_url': reverse('spoc_gradebook', kwargs={'course_id': unicode(course_key)}),
-        'students': student_info,
+    course_grade = CourseGradeFactory().read(request.user, course)
+    courseware_summary = course_grade.chapter_grades.values()
+    course_sections = []
+    
+    for chapter in courseware_summary:
+        chapter_name = chapter['display_name']
+        for section in chapter['sections']:
+            if section.problem_scores and section.graded and chapter_name not in course_sections:
+                course_sections.append(chapter_name)
+
+    return render_to_response('courseware/masters_gradebook.html', {
+        'number_of_students': 2,
         'course': course,
         'course_id': course_key,
+        'course_sections': course_sections,
         # Checked above
         'staff_access': True,
         'ordered_grades': sorted(course.grade_cutoffs.items(), key=lambda i: i[1], reverse=True),

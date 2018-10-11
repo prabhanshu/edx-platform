@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 
 from django.conf import settings
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, User
 from pytz import UTC
 from opaque_keys.edx.keys import CourseKey, UsageKey
 from six import text_type
@@ -841,3 +841,18 @@ def get_user_role(user, course_key):
         return 'staff'
     else:
         return 'student'
+
+def is_staff_or_instructor_on_course(user, course):
+    for level in ['instructor', 'staff']:
+        if has_access(user, level, course):
+            return True
+    return False
+
+
+def get_enrolled_non_staff_students(course, course_key):
+    students = User.objects.filter(
+        courseenrollment__course_id=course_key,
+        courseenrollment__is_active=1
+    ).order_by('username').select_related('profile')
+
+    return [student for student in students if not is_staff_or_instructor_on_course(student, course)]
