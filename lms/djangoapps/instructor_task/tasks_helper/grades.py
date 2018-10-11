@@ -247,7 +247,6 @@ class CourseGradeReport(object):
         A generator of batches of (success_rows, error_rows) for this report.
         """
         for users in self._batch_users(context):
-            users = filter(lambda u: u is not None, users)
             yield self._rows_for_users(context, users)
 
     def _compile(self, context, batched_rows):
@@ -315,8 +314,8 @@ class CourseGradeReport(object):
                 ).select_related('profile')
                 yield users
 
-        users = users_for_course(context.course_id)
-        return users
+        batch_users = users_for_course(context.course_id)
+        return batch_users
 
     def _user_grades(self, course_grade, context):
         """
