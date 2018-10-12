@@ -15,12 +15,14 @@ from rest_framework.test import APITestCase
 from six import text_type
 
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
+from lms.djangoapps.grades.api.v1.views import CourseGradesView
 from lms.djangoapps.grades.config.waffle import waffle_flags, WRITABLE_GRADEBOOK
 from lms.djangoapps.grades.course_data import CourseData
 from lms.djangoapps.grades.course_grade import CourseGrade
 from lms.djangoapps.grades.subsection_grade import ReadSubsectionGrade
-from openedx.core.djangoapps.content.course_overviews.tests.factories import CourseOverviewFactory
 from openedx.core.djangoapps.waffle_utils.testutils import override_waffle_flag
+from openedx.core.djangoapps.content.course_overviews.tests.factories import CourseOverviewFactory
+from openedx.core.djangoapps.user_authn.tests.utils import AuthType, AuthAndScopesTestMixin
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase, TEST_DATA_SPLIT_MODULESTORE
@@ -79,27 +81,23 @@ class GradeViewTestMixin(SharedModuleStoreTestCase):
         )
         cls.course_key = cls.course.id
 
-        cls.password = 'test'
-        cls.student = UserFactory(username='dummy', password=cls.password)
-        cls.other_student = UserFactory(username='foo', password=cls.password)
-        cls.other_user = UserFactory(username='bar', password=cls.password)
-        cls.staff = StaffFactory(course_key=cls.course_key, password=cls.password)
-        cls.global_staff = GlobalStaffFactory.create()
-        cls._create_user_enrollments(cls.course, cls.student, cls.other_student)
-
-    def setUp(self):
-        super(GradeViewTestMixin, self).setUp()
-        self.client.login(username=self.student.username, password=self.password)
-
-    @classmethod
-    def _create_user_enrollments(cls, course, *users):
+    def _create_user_enrollments(self, *users):
         date = datetime(2013, 1, 22, tzinfo=UTC)
         for user in users:
             CourseEnrollmentFactory(
-                course_id=course.id,
+                course_id=self.course.id,
                 user=user,
                 created=date,
             )
+
+    def setUp(self):
+        super(GradeViewTestMixin, self).setUp()
+        self.password = 'test'
+        self.global_staff = GlobalStaffFactory.create()
+        self.student = UserFactory(password=self.password)
+        self.other_student = UserFactory(password=self.password)
+        self._create_user_enrollments(self.student, self.other_student)
+        self.client.login(username=self.student.username, password=self.password)
 
     @classmethod
     def _create_test_course_with_default_grading_policy(cls, display_name, run):
@@ -141,12 +139,13 @@ class GradeViewTestMixin(SharedModuleStoreTestCase):
 
 
 @ddt.ddt
-class SingleUserGradesTests(GradeViewTestMixin, APITestCase):
+class SingleUserGradesTests(GradeViewTestMixin, AuthAndScopesTestMixin, APITestCase):
     """
     Tests for grades related to a course and specific user
         e.g. /api/grades/v1/courses/{course_id}/?username={username}
              /api/grades/v1/courses/?course_id={course_id}&username={username}
     """
+    default_required_scopes = CourseGradesView.required_scopes
 
     @classmethod
     def setUpClass(cls):
@@ -205,8 +204,9 @@ class SingleUserGradesTests(GradeViewTestMixin, APITestCase):
         """
         # a user not enrolled in the course cannot request her grade
         self.client.logout()
-        self.client.login(username=self.other_user.username, password=self.password)
-        resp = self.client.get(self.get_url(self.other_user.username))
+        unenrolled_user = UserFactory(password=self.password)
+        self.client.login(username=unenrolled_user.username, password=self.password)
+        resp = self.client.get(self.get_url(unenrolled_user.username))
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         self.assertIn('error_code', resp.data)
         self.assertEqual(
@@ -409,10 +409,6 @@ class GradebookViewTest(GradeViewTestMixin, APITestCase):
 
         cls.course = CourseFactory.create(display_name='test-course', run='run-1')
         cls.course_overview = CourseOverviewFactory.create(id=cls.course.id)
-
-        # we re-assign cls.course from what's created in the parent class, so we have to
-        # re-create the enrollments, too.
-        cls._create_user_enrollments(cls.course, cls.student, cls.other_student)
 
         cls.chapter_1 = ItemFactory.create(
             category='chapter',
