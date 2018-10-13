@@ -41,7 +41,7 @@ from .accounts import (
 )
 from .accounts.api import check_account_exists
 from .serializers import CountryTimeZoneSerializer, UserSerializer, UserPreferenceSerializer
-
+from openedx.core.djangolib.markup import HTML
 
 class LoginSessionView(APIView):
     """HTTP end-points for logging in users. """
@@ -773,14 +773,20 @@ class RegistrationView(APIView):
 
         # Translators: "Terms of Service" is a legal document users must agree to
         # in order to register a new account.
-        label = _(u"I agree to the {platform_name} {terms_of_service}").format(
+        tos_link_start = HTML("<a href=\"{}\" target=\"_blank\">").format(marketing_link("TOS"))
+        privacy_link_start = HTML("<a href=\"{}\" target=\"_blank\">").format(marketing_link("PRIVACY"))
+        link_end = HTML("</a>")
+        label = _(u"By creating an account with {platform_name}, you agree to abide by our {platform_name} {tos_link_start}{terms_of_service}{link_end} and agree to our {privacy_link_start}Privacy Policy{link_end}.").format(
             platform_name=configuration_helpers.get_value("PLATFORM_NAME", settings.PLATFORM_NAME),
-            terms_of_service=terms_label
+            terms_of_service=terms_label,
+            tos_link_start=tos_link_start,
+            privacy_link_start=privacy_link_start,
+            link_end=link_end
         )
 
         # Translators: "Terms of Service" is a legal document users must agree to
         # in order to register a new account.
-        error_msg = _(u"You must agree to the {platform_name} {terms_of_service}").format(
+        error_msg = _(u"You must agree to the {platform_name} {terms_of_service} and Privacy Policy").format(
             platform_name=configuration_helpers.get_value("PLATFORM_NAME", settings.PLATFORM_NAME),
             terms_of_service=terms_label
         )
@@ -794,8 +800,6 @@ class RegistrationView(APIView):
             error_messages={
                 "required": error_msg
             },
-            supplementalLink=terms_link,
-            supplementalText=terms_text
         )
 
     def _add_terms_of_service_field(self, form_desc, required=True):
@@ -881,12 +885,20 @@ class RegistrationView(APIView):
                     # Hide the password field
                     form_desc.override_field_properties(
                         "password",
-                        default="",
+                        default=third_party_auth.pipeline.make_random_password(),
                         field_type="hidden",
                         required=False,
                         label="",
                         instructions="",
                         restrictions={}
+                    )
+                    # used to identify that request is running third party social auth
+                    form_desc.add_field(
+                        "social_auth_provider",
+                        field_type="hidden",
+                        label="",
+                        default=current_provider.name if current_provider.name else "Third Party",
+                        required=False,
                     )
 
 
@@ -1075,3 +1087,4 @@ class CountryTimeZoneListView(generics.ListAPIView):
     def get_queryset(self):
         country_code = self.request.GET.get('country_code', None)
         return get_country_time_zones(country_code)
+
